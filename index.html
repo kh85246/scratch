@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>80抽極限刮刮樂 - 紀錄持久化修復版</title>
+  <title>80抽極限刮刮樂 - 卡面紀錄同步修復版</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { 
@@ -145,10 +145,14 @@
     isValid = true;
   }
 
-  // 獨立儲存每個 Token 的刮卡歷史紀錄
-  const storageKey = `scratch_history_${tokenParam}`;
-  let scratchedHistory = JSON.parse(localStorage.getItem(storageKey) || "[]");
-  let remainingAttempts = Math.max(0, maxAllowed - scratchedHistory.length);
+  // 1. 全域共有卡面刮開紀錄（不論換哪個 Token 連結都共用）
+  const globalCardStorageKey = "scratch_card_global_revealed_slots";
+  let revealedSlots = JSON.parse(localStorage.getItem(globalCardStorageKey) || "[]");
+
+  // 2. 當前 Token 已消耗的使用次數
+  const tokenUsedStorageKey = `scratch_token_used_${tokenParam}`;
+  let tokenUsedCount = parseInt(localStorage.getItem(tokenUsedStorageKey) || "0", 10);
+  let remainingAttempts = Math.max(0, maxAllowed - tokenUsedCount);
 
   const statusBar = document.getElementById('statusBar');
   if (isValid) {
@@ -167,13 +171,13 @@
     slot.className = 'card-slot';
     slot.innerHTML = `<span class="slot-number">#${i}</span><span class="prize-text">${prizeMap[i-1]}</span>`;
 
-    const isAlreadyScratched = scratchedHistory.includes(i);
+    const isAlreadyScratched = revealedSlots.includes(i);
 
     if (isAlreadyScratched) {
-      // 若該格已在歷史紀錄中，直接設為已開獎狀態，不生成 Canvas
+      // 只要全域紀錄中有此號碼，直接保持開獎狀態
       slot.classList.add('revealed');
     } else {
-      // 僅針對未刮開的格子建立 Canvas 塗層
+      // 尚未刮開的格子繪製塗層
       const canvas = document.createElement('canvas');
       canvas.width = 100;
       canvas.height = 100;
@@ -245,17 +249,20 @@
       if (imgData.data[i] === 0) transparent++;
     }
     
-    // 超過 25% 塗層抹去即判定成功刮開
+    // 超過 25% 塗層抹去即判定刮開成功
     if (transparent > (imgData.data.length / 4) * 0.25) {
-      // 永久移除 Canvas 元素
       canvas.remove();
       slot.classList.add('revealed');
       
-      // 寫入持久化紀錄
-      if (!scratchedHistory.includes(slotNum)) {
-        scratchedHistory.push(slotNum);
-        localStorage.setItem(storageKey, JSON.stringify(scratchedHistory));
-        remainingAttempts = Math.max(0, maxAllowed - scratchedHistory.length);
+      // 1. 寫入全域卡面刮開紀錄（號碼 23 號將永久保持刮開）
+      if (!revealedSlots.includes(slotNum)) {
+        revealedSlots.push(slotNum);
+        localStorage.setItem(globalCardStorageKey, JSON.stringify(revealedSlots));
+        
+        // 2. 扣減當前 Token 的可用額度
+        tokenUsedCount++;
+        localStorage.setItem(tokenUsedStorageKey, tokenUsedCount.toString());
+        remainingAttempts = Math.max(0, maxAllowed - tokenUsedCount);
         document.getElementById('remainCount').textContent = remainingAttempts;
       }
       
