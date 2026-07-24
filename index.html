@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>80抽極限刮刮樂 - 自由選擇版</title>
+  <title>80抽極限刮刮樂 - 配率管理版</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: #121212; color: #fff; padding: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -11,10 +11,20 @@
     
     .status-bar { 
       background: #222; border: 1px solid #fcc419; padding: 10px 20px; 
-      border-radius: 20px; margin: 15px 0; color: #fff; font-size: 15px; 
+      border-radius: 20px; margin: 10px 0; color: #fff; font-size: 15px; 
       box-shadow: 0 0 10px rgba(252, 196, 25, 0.2);
     }
     .status-bar span { color: #fcc419; font-weight: bold; font-size: 20px; margin: 0 4px; }
+    
+    /* 配率統計儀表板 */
+    .dashboard {
+      background: #1e1e1e; border: 1px solid #333; border-radius: 10px;
+      padding: 15px; width: 100%; max-width: 600px; margin-bottom: 15px;
+    }
+    .dashboard h3 { color: #fcc419; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+    .rate-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+    .rate-table th { color: #aaa; padding: 4px; }
+    .rate-table td { padding: 6px 4px; border-bottom: 1px solid #2a2a2a; }
     
     .grid-container {
       display: grid;
@@ -56,7 +66,22 @@
   <h1>🔥 豪華 80 刮尊爵限定卡</h1>
   
   <div class="status-bar" id="statusBar">
-    🎁 本次授權：剩餘 <span id="remainCount">0</span> 次刮卡機會 (任選格子)
+    🎁 本次授權：剩餘 <span id="remainCount">0</span> 次刮卡機會
+  </div>
+
+  <!-- 配率與剩餘統計面板 -->
+  <div class="dashboard">
+    <h3>📊 80 刮即時配率與獎項統計面板</h3>
+    <table class="rate-table">
+      <thead>
+        <tr>
+          <th>獎項名稱</th>
+          <th>總數量</th>
+          <th>初始機率</th>
+        </tr>
+      </thead>
+      <tbody id="rateTableBody"></tbody>
+    </table>
   </div>
 
   <div class="grid-container" id="grid"></div>
@@ -70,20 +95,43 @@
   </div>
 
 <script>
-  // 1. 管理員私密金鑰 (請隨意修改，勿讓對方知道)
-  const SECRET_KEY = "MyLucky2026Key";
+  // ========================================================
+  // 🎯 1. 管理者便利編輯區 (可自由修改名稱與數量，總和須為80)
+  // ========================================================
+  const SECRET_KEY = "MyLucky2026Key"; // 私密防偽金鑰
 
-  // 2. 80 刮獎項對照表
-  const prizeMap = Array.from({ length: 80 }, (_, i) => {
-    const num = i + 1;
-    if (num === 8) return "🥇 特等獎：iPad Air";
-    if (num <= 5) return "🥈 頭獎：$1,000 禮券";
-    if (num <= 15) return "🥉 貳獎：$200 禮券";
-    if (num <= 35) return "🎁 普獎：免費飲料券";
-    return "☘️ 銘謝惠顧";
+  const prizeConfig = [
+    { rank: "特等獎", name: "🥇 iPad Air 256G", count: 1, color: "#ff4d4f" },
+    { rank: "頭獎",   name: "🥈 $1,000 禮券",    count: 4, color: "#ffa940" },
+    { rank: "貳獎",   name: "🥉 $200 禮券",      count: 10, color: "#ffec3d" },
+    { rank: "普獎",   name: "🎁 免費飲料兌換券",  count: 20, color: "#73d13d" },
+    { rank: "銘謝",   name: "☘️ 銘謝惠顧",       count: 45, color: "#8c8c8c" }
+  ];
+
+  // 自動建構 80 格獎項清單 (固定的 80 格陣列)
+  let prizeMap = [];
+  prizeConfig.forEach(p => {
+    for(let i = 0; i < p.count; i++) {
+      prizeMap.push(p.name);
+    }
   });
 
-  // 生成防偽雜湊 Token (算式：count + SECRET_KEY)
+  // 渲染配率面板
+  const rateTableBody = document.getElementById('rateTableBody');
+  prizeConfig.forEach(p => {
+    const rate = ((p.count / 80) * 100).toFixed(2);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color: ${p.color};">${p.name}</td>
+      <td>${p.count} 個</td>
+      <td>${rate}%</td>
+    `;
+    rateTableBody.appendChild(tr);
+  });
+
+  // ========================================================
+  // 🔐 2. 防偽與驗證邏輯
+  // ========================================================
   function generateToken(countStr) {
     let hash = 0;
     const combined = countStr + SECRET_KEY;
@@ -94,7 +142,6 @@
     return Math.abs(hash).toString(16);
   }
 
-  // 讀取網址參數
   const urlParams = new URLSearchParams(window.location.search);
   const countParam = urlParams.get('count') || "0";
   const tokenParam = urlParams.get('token') || "";
@@ -102,7 +149,6 @@
   let maxAllowed = 0;
   let isValid = false;
 
-  // 驗證 Token 是否合法
   if (countParam !== "0" && tokenParam === generateToken(countParam)) {
     maxAllowed = parseInt(countParam, 10);
     isValid = true;
@@ -110,16 +156,17 @@
     alert("⚠️ 網址驗證失敗！連結參數已被竄改或無效。");
   }
 
-  // 讀取已經刮過的紀錄 (綁定此 Token)
   const storageKey = `free_scratch_${tokenParam}`;
   let scratchedHistory = JSON.parse(localStorage.getItem(storageKey) || "[]");
   let remainingAttempts = Math.max(0, maxAllowed - scratchedHistory.length);
 
   document.getElementById('remainCount').textContent = remainingAttempts;
 
+  // ========================================================
+  // 🎨 3. 渲染 80 格刮刮樂網格
+  // ========================================================
   const grid = document.getElementById('grid');
 
-  // 渲染 80 個格子
   for (let i = 1; i <= 80; i++) {
     const slot = document.createElement('div');
     slot.className = 'card-slot';
@@ -133,7 +180,6 @@
     const isAlreadyScratched = scratchedHistory.includes(i);
 
     if (!isAlreadyScratched) {
-      // 繪製覆蓋塗層
       ctx.fillStyle = '#888888';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ffffff';
@@ -150,13 +196,10 @@
         showModal("提示", "此網址無效或未獲授權！");
         return;
       }
-      
-      // 若該格尚未刮過，但額度已經用完
       if (remainingAttempts <= 0 && !scratchedHistory.includes(i)) {
         showModal("提示", `您的專屬 ${maxAllowed} 次刮獎額度已用完囉！`);
         return;
       }
-
       if (!isDrawing) return;
 
       e.preventDefault();
@@ -191,7 +234,6 @@
       if (imgData.data[i] === 0) transparent++;
     }
     
-    // 刮開 40% 自動完全揭曉
     if (transparent > (imgData.data.length / 4) * 0.4) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
