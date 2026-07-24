@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>80抽極限刮刮樂</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #121212; color: #fff; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    h1 { color: #fcc419; margin-bottom: 8px; font-size: 24px; text-align: center; }
+    p.subtitle { color: #aaa; margin-bottom: 20px; font-size: 14px; text-align: center; }
+    
+    /* 80格網格佈局 */
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr); /* 手機端8欄，可調整 */
+      gap: 8px;
+      max-width: 600px;
+      width: 100%;
+    }
+    
+    .card-slot {
+      position: relative;
+      aspect-ratio: 1;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: bold;
+      color: #ffd700;
+      text-align: center;
+      padding: 2px;
+    }
+
+    .slot-number { position: absolute; color: #555; font-size: 10px; top: 2px; left: 4px; }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer; touch-action: none; }
+    
+    .modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 10;
+    }
+    .modal-content { background: #222; padding: 20px; border-radius: 12px; border: 1px solid #fcc419; text-align: center; max-width: 300px; }
+    .btn { background: #fcc419; color: #000; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <h1>🔥 豪華 80 刮尊爵限定卡</h1>
+  <p class="subtitle">點擊專屬卡號刮開，挑戰你的幸運極限！</p>
+
+  <div class="grid-container" id="grid"></div>
+
+  <!-- 提示彈窗 -->
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <h3 id="modalTitle">刮獎結果</h3>
+      <p id="modalMsg" style="margin: 15px 0; font-size: 18px; color: #fcc419;"></p>
+      <button class="btn" onclick="closeModal()">確認並複製結果</button>
+    </div>
+  </div>
+
+<script>
+  // 1. 設定80個格子獎項 (實務上可對照加密Hash)
+  // 此處支援透過自訂陣列設定 80 個獎項
+  const prizeMap = Array.from({ length: 80 }, (_, i) => {
+    const num = i + 1;
+    if (num === 1) return "🥇 特等獎：iPad Air";
+    if (num <= 5) return "🥈 頭獎：$1,000 禮券";
+    if (num <= 15) return "🥉 貳獎：$200 禮券";
+    if (num <= 35) return "🎁 普獎：免費飲料券";
+    return "☘️ 銘謝惠顧";
+  });
+
+  const grid = document.getElementById('grid');
+
+  // 解析 URL 參數 (例如 ?slot=15)
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetSlot = parseInt(urlParams.get('slot'));
+
+  // 2. 渲染 80 格刮刮樂
+  for (let i = 1; i <= 80; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'card-slot';
+    slot.innerHTML = `<span class="slot-number">${i}</span><span>${prizeMap[i-1]}</span>`;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 70;
+    canvas.height = 70;
+    const ctx = canvas.getContext('2d');
+
+    // 塗層渲染
+    ctx.fillStyle = '#888888';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`#${i}`, canvas.width / 2, canvas.height / 2 + 4);
+
+    // 刮除邏輯
+    let isDrawing = false;
+    ctx.globalCompositeOperation = 'destination-out';
+
+    function scratch(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const x = (clientX - rect.left) * (canvas.width / rect.width);
+      const y = (clientY - rect.top) * (canvas.height / rect.height);
+
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      checkScratch(i, canvas, ctx);
+    }
+
+    canvas.addEventListener('mousedown', () => isDrawing = true);
+    canvas.addEventListener('mousemove', scratch);
+    window.addEventListener('mouseup', () => isDrawing = false);
+
+    canvas.addEventListener('touchstart', () => isDrawing = true);
+    canvas.addEventListener('touchmove', scratch);
+    canvas.addEventListener('touchend', () => isDrawing = false);
+
+    slot.appendChild(canvas);
+    grid.appendChild(slot);
+
+    // 若有高亮指定刮數
+    if (targetSlot === i) {
+      slot.style.border = '2px solid #fcc419';
+      slot.style.boxShadow = '0 0 10px #fcc419';
+    }
+  }
+
+  // 判斷刮開比例
+  function checkScratch(slotNum, canvas, ctx) {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let transparent = 0;
+    for (let i = 3; i < imgData.data.length; i += 4) {
+      if (imgData.data[i] === 0) transparent++;
+    }
+    if (transparent > (imgData.data.length / 4) * 0.4) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      showModal(`第 ${slotNum} 刮結果`, prizeMap[slotNum - 1]);
+    }
+  }
+
+  function showModal(title, msg) {
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalMsg').textContent = msg;
+    document.getElementById('modal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('modal').style.display = 'none';
+  }
+</script>
+</body>
+</html>
