@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>80抽極限刮刮樂 - 觸控終極修復版</title>
+  <title>80抽極限刮刮樂 - 紀錄持久化修復版</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { 
@@ -57,10 +57,11 @@
     .slot-number { position: absolute; color: #666; font-size: 10px; top: 2px; left: 3px; }
     .prize-text { display: none; word-break: break-all; line-height: 1.2; font-size: 10px; padding: 2px; }
 
+    /* 刮開後永久顯示狀態 */
+    .card-slot.revealed { background: #1a2310; border-color: #52c41a; }
     .card-slot.revealed .prize-text { display: block; }
     .card-slot.revealed .slot-number { display: none; }
 
-    /* 防手機滑動頁面影響刮卡 */
     canvas { 
       position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
       cursor: pointer; touch-action: none; -webkit-touch-callout: none;
@@ -144,7 +145,8 @@
     isValid = true;
   }
 
-  const storageKey = `free_scratch_${tokenParam}`;
+  // 獨立儲存每個 Token 的刮卡歷史紀錄
+  const storageKey = `scratch_history_${tokenParam}`;
   let scratchedHistory = JSON.parse(localStorage.getItem(storageKey) || "[]");
   let remainingAttempts = Math.max(0, maxAllowed - scratchedHistory.length);
 
@@ -165,72 +167,74 @@
     slot.className = 'card-slot';
     slot.innerHTML = `<span class="slot-number">#${i}</span><span class="prize-text">${prizeMap[i-1]}</span>`;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = 100;
-    canvas.height = 100;
-    const ctx = canvas.getContext('2d');
-
     const isAlreadyScratched = scratchedHistory.includes(i);
 
     if (isAlreadyScratched) {
+      // 若該格已在歷史紀錄中，直接設為已開獎狀態，不生成 Canvas
       slot.classList.add('revealed');
     } else {
+      // 僅針對未刮開的格子建立 Canvas 塗層
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 100;
+      const ctx = canvas.getContext('2d');
+
       ctx.fillStyle = '#666666';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#fcc419';
       ctx.font = 'bold 20px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`#${i}`, 50, 58);
-    }
 
-    let isDrawing = false;
+      let isDrawing = false;
 
-    // 使用統一樣式 Pointer Events，完美相容手機與電腦
-    canvas.addEventListener('pointerdown', (e) => {
-      if (!isValid) {
-        if (!hasAlerted) {
-          hasAlerted = true;
-          showModal("提示", "目前為展示模式，請點擊帶有專屬 Token 的邀請連結進行刮卡！");
+      canvas.addEventListener('pointerdown', (e) => {
+        if (!isValid) {
+          if (!hasAlerted) {
+            hasAlerted = true;
+            showModal("提示", "目前為展示模式，請點擊帶有專屬 Token 的邀請連結進行刮卡！");
+          }
+          return;
         }
-        return;
+
+        if (remainingAttempts <= 0) {
+          if (!hasAlerted) {
+            hasAlerted = true;
+            showModal("提示", `您的專屬 ${maxAllowed} 次刮卡額度已用完！`);
+          }
+          return;
+        }
+
+        isDrawing = true;
+        canvas.setPointerCapture(e.pointerId);
+        scratch(e);
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (isDrawing) scratch(e);
+      });
+
+      canvas.addEventListener('pointerup', (e) => {
+        isDrawing = false;
+        try { canvas.releasePointerCapture(e.pointerId); } catch(err){}
+      });
+
+      function scratch(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(x, y, 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        checkScratch(i, canvas, ctx, slot);
       }
 
-      if (remainingAttempts <= 0 && !scratchedHistory.includes(i)) {
-        if (!hasAlerted) {
-          hasAlerted = true;
-          showModal("提示", `您的專屬 ${maxAllowed} 次刮卡額度已用完！`);
-        }
-        return;
-      }
-
-      isDrawing = true;
-      canvas.setPointerCapture(e.pointerId);
-      scratch(e);
-    });
-
-    canvas.addEventListener('pointermove', (e) => {
-      if (isDrawing) scratch(e);
-    });
-
-    canvas.addEventListener('pointerup', (e) => {
-      isDrawing = false;
-      try { canvas.releasePointerCapture(e.pointerId); } catch(err){}
-    });
-
-    function scratch(e) {
-      const rect = canvas.getBoundingClientRect();
-      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-      const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(x, y, 16, 0, Math.PI * 2);
-      ctx.fill();
-
-      checkScratch(i, canvas, ctx, slot);
+      slot.appendChild(canvas);
     }
 
-    if (!isAlreadyScratched) slot.appendChild(canvas);
     grid.appendChild(slot);
   }
 
@@ -241,16 +245,17 @@
       if (imgData.data[i] === 0) transparent++;
     }
     
-    // 超過 25% 塗層被塗掉即揭曉結果
+    // 超過 25% 塗層抹去即判定成功刮開
     if (transparent > (imgData.data.length / 4) * 0.25) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // 永久移除 Canvas 元素
+      canvas.remove();
       slot.classList.add('revealed');
-      canvas.style.display = 'none';
       
+      // 寫入持久化紀錄
       if (!scratchedHistory.includes(slotNum)) {
         scratchedHistory.push(slotNum);
         localStorage.setItem(storageKey, JSON.stringify(scratchedHistory));
-        remainingAttempts--;
+        remainingAttempts = Math.max(0, maxAllowed - scratchedHistory.length);
         document.getElementById('remainCount').textContent = remainingAttempts;
       }
       
