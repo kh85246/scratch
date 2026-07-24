@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>80抽極限刮刮樂 - 配率管理版</title>
+  <title>80抽極限刮刮樂 - 配率管理穩定版</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: #121212; color: #fff; padding: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -130,16 +130,15 @@
   });
 
   // ========================================================
-  // 🔐 2. 防偽與驗證邏輯
+  // 🔐 2. 防偽與驗證邏輯 (100% 跨平台超穩定 Hash 算式)
   // ========================================================
   function generateToken(countStr) {
-    let hash = 0;
     const combined = countStr + SECRET_KEY;
+    let hash = 0;
     for (let i = 0; i < combined.length; i++) {
-      hash = (hash << 5) - hash + combined.charCodeAt(i);
-      hash |= 0;
+      hash = (hash * 31 + combined.charCodeAt(i)) % 1000000;
     }
-    return Math.abs(hash).toString(16);
+    return hash.toString(16);
   }
 
   const urlParams = new URLSearchParams(window.location.search);
