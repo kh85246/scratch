@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>80抽極限刮刮樂 - 終極持久化修正版</title>
+  <title>80抽極限刮刮樂 - 防偽算式完全修正版</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { 
@@ -118,13 +118,12 @@
     { rank: "銘謝",   name: "☘️ 銘謝惠顧",       count: 45, color: "#8c8c8c" }
   ];
 
-  // 2. 偽隨機數生成器（確保 80 格的獎項位置固定，不隨頁面重載改變）
+  // 固定隨機種子
   function seededRandom(seed) {
     let x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
   }
 
-  // 產生 80 格固定的獎項配置
   let rawPrizes = [];
   prizeConfig.forEach(p => {
     for(let i = 0; i < p.count; i++) rawPrizes.push(p.name);
@@ -147,14 +146,14 @@
     rateTableBody.appendChild(tr);
   });
 
-  // Token 防偽驗證
+  // 修正後的防溢位 Token 生成函式 (強轉無符號整數)
   function generateToken(countStr) {
     const combined = countStr + SECRET_KEY;
     let hash = 0;
     for (let i = 0; i < combined.length; i++) {
-      hash = (hash * 31 + combined.charCodeAt(i)) % 1000000;
+      hash = (hash * 31 + combined.charCodeAt(i)) & 0xFFFFFFFF;
     }
-    return hash.toString(16);
+    return (hash >>> 0).toString(16);
   }
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -169,7 +168,7 @@
     isValid = true;
   }
 
-  // 3. 全域記憶體讀取 (Key: scratch_global_card_v1)
+  // 全域記憶體讀取
   const GLOBAL_KEY = "scratch_global_card_v1";
   function getRevealedSlots() {
     try {
@@ -181,14 +180,13 @@
 
   let revealedSlots = getRevealedSlots();
 
-  // 4. Token 消耗額度記憶 (Key: scratch_token_used_TOKEN)
+  // Token 消耗次數
   const TOKEN_KEY = `scratch_token_used_${tokenParam}`;
   let tokenUsedCount = parseInt(localStorage.getItem(TOKEN_KEY) || "0", 10);
   let remainingAttempts = Math.max(0, maxAllowed - tokenUsedCount);
 
-  // 顯示 Debug 資訊
   function updateDebugView() {
-    document.getElementById('debugBar').textContent = `🔍 系統歷史紀錄 (號碼集合): [ ${getRevealedSlots().join(', ')} ]`;
+    document.getElementById('debugBar').textContent = `🔍 系統歷史紀錄 (已刮號碼): [ ${getRevealedSlots().join(', ')} ]`;
   }
 
   const statusBar = document.getElementById('statusBar');
@@ -203,14 +201,12 @@
   let hasAlerted = false;
   const grid = document.getElementById('grid');
 
-  // 5. 渲染 80 格卡面
   for (let i = 1; i <= 80; i++) {
     const slot = document.createElement('div');
     slot.className = 'card-slot';
     slot.id = `slot-${i}`;
     slot.innerHTML = `<span class="slot-number">#${i}</span><span class="prize-text">${prizeMap[i-1]}</span>`;
 
-    // 嚴格判定：如果號碼在歷史紀錄中，直接設為 revealed，絕不畫 Canvas
     if (revealedSlots.includes(i)) {
       slot.classList.add('revealed');
     } else {
@@ -287,18 +283,15 @@
       if (imgData.data[i] === 0) transparent++;
     }
     
-    // 超過 25% 塗層抹去判定成功
     if (transparent > (imgData.data.length / 4) * 0.25) {
       canvas.remove();
       slot.classList.add('revealed');
       
       let currentRevealed = getRevealedSlots();
       if (!currentRevealed.includes(slotNum)) {
-        // 1. 強制寫入全域 LocalStorage
         currentRevealed.push(slotNum);
         localStorage.setItem(GLOBAL_KEY, JSON.stringify(currentRevealed));
         
-        // 2. 寫入 Token 消耗
         tokenUsedCount++;
         localStorage.setItem(TOKEN_KEY, tokenUsedCount.toString());
         
